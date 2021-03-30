@@ -1,5 +1,6 @@
 import os
 from time import time
+import argparse
 
 import cv2
 import torch
@@ -11,7 +12,7 @@ from utils import save_params, get_latest_ckpt, load_params, listdir
 from dataset import FFmpeg2YUV
 
 
-def train(params=None, ffmpeg_path=''):
+def train(params=None):
     os.makedirs(params['ckpt_path'], exist_ok=True)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -41,16 +42,16 @@ def train(params=None, ffmpeg_path=''):
         model.train()
         for file in files:
             sdr = FFmpeg2YUV(
-                f"{params['dataset']}/{file}",
+                os.path.join(params['dataset'], file),
                 bt2020_to_bt709=True, bit_depth=10,
                 l_sl=params['net_input_size'], f_sl=params['net_output_size'],
-                ffmpeg_path=ffmpeg_path
+                ffmpeg_path=params['ffmpeg_path']
             )
             hdr = FFmpeg2YUV(
-                f"{params['dataset']}/{file}",
+                os.path.join(params['dataset'], file),
                 bt2020_to_bt709=False, bit_depth=10,
-                l_sl=params['net_input_size'], f_sl=params['net_output_size'],
-                ffmpeg_path=ffmpeg_path
+                f_sl=params['net_output_size'],
+                ffmpeg_path=params['ffmpeg_path']
             )
             for i in range(sdr.num_frames // params['batch_size']):
                 batch_start_time = time()
@@ -65,7 +66,7 @@ def train(params=None, ffmpeg_path=''):
                 hdr_ = torch.empty_like(sdr_full)
                 for j in range(params['batch_size']):
                     sdr_lr[j], sdr_full[j] = [torch.from_numpy(_).to(device) for _ in sdr.read()]
-                    hdr_[j] = torch.from_numpy(hdr.read()).to(device)
+                    hdr_[j] = torch.from_numpy(hdr.read()[0]).to(device)
                 sdr_lr /= 1023
                 sdr_full /= 1023
                 hdr_ /= 1023
@@ -104,6 +105,14 @@ def train(params=None, ffmpeg_path=''):
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='HDRNet Inference')
+    parser.add_argument('-dataset', type=str)
+    parser.add_argument('-low', type=int, dest='net_input_size')
+    parser.add_argument('-full', type=int, dest='net_output_size')
+    parser.add_argument('-lr', type=float)
+    parser.add_argument('-bs', type=int, dest='batch_size')
+    parser.add_argument('-ff', type=str, dest='ffmpeg_path')
+
     params = {
         'ckpt_path': './model_weights',
         'test_image': 'test_image',
@@ -120,7 +129,9 @@ if __name__ == '__main__':
         'log_interval': 10,
         'ckpt_interval': 100,
         'dataset': '/Users/ibobby/Dataset/hdr',
-        'dataset_suffix': ''
+        'dataset_suffix': '',
+        'ffmpeg_path': ''
     }
+    params.update(parser.parse_args().__dict__)
 
-    train(params=params, ffmpeg_path='')
+    train(params=params)

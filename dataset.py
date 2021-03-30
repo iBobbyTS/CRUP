@@ -48,12 +48,17 @@ class FFmpeg2YUV:
         )
 
     def read(self):
-        read_Y = numpy.frombuffer(
-            self.pipe.stdout.read(self.y_read_amount), dtype=self.dtype
-        ).reshape(self.y_height, self.y_width)
-        read_UV = numpy.frombuffer(
-            self.pipe.stdout.read(self.uv_read_amount), dtype=self.dtype
-        ).reshape(self.uv_height, self.uv_width, 2)
+        # read_Y = numpy.frombuffer(
+        #     self.pipe.stdout.read(self.y_read_amount), dtype=self.dtype
+        # ).reshape(self.y_height, self.y_width)
+        # read_UV = numpy.frombuffer(
+        #     self.pipe.stdout.read(self.y_read_amount // 2), dtype=self.dtype
+        # ).reshape(self.uv_height, self.uv_width, 2)
+        read = numpy.frombuffer(
+            self.pipe.stdout.read(self.y_height * self.y_width * 3 // 2), dtype=self.dtype
+        ).reshape(self.y_height * 3 // 2, self.y_width)
+        read_Y = read[:self.y_height]
+        read_UV = read[self.y_height:].reshape(2, self.uv_height, self.uv_width).transpose((1, 2, 0))
         returning = []
         if self.return_lr:
             lr_Y = cv2.resize(read_Y, (self.l_sl, self.l_sl), interpolation=cv2.INTER_CUBIC)
