@@ -25,15 +25,14 @@ class FFmpeg2YUV:
         cap.release()
         self.uv_height = self.y_height // 2
         self.uv_width = self.y_width // 2
-        self.read_amount = 1 if bit_depth == 8 else 2
-        self.y_read_amount = self.y_width * self.y_height * self.read_amount
-        self.uv_read_amount = self.uv_width * self.uv_height * self.read_amount * 2
+        self.read_amount = (1 if bit_depth == 8 else 2) * self.y_width * self.y_height * 3 // 2
         self.l_sl = l_sl
         self.f_sl = f_sl
         self.dtype = numpy.uint8 if bit_depth == 8 else numpy.uint16
         cmd = [
             os.path.join(ffmpeg_path, 'ffmpeg'),
             '-loglevel', 'error',
+            '-ss', '15',
             '-i', path,
             *(['-vf',
                'zscale=t=linear:npl=100,format=yuv420p10le,'
@@ -44,18 +43,12 @@ class FFmpeg2YUV:
             '-'
         ]
         self.pipe = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, bufsize=int(self.y_width * self.y_height * self.read_amount)
+            cmd, stdout=subprocess.PIPE, bufsize=self.read_amount
         )
 
     def read(self):
-        # read_Y = numpy.frombuffer(
-        #     self.pipe.stdout.read(self.y_read_amount), dtype=self.dtype
-        # ).reshape(self.y_height, self.y_width)
-        # read_UV = numpy.frombuffer(
-        #     self.pipe.stdout.read(self.y_read_amount // 2), dtype=self.dtype
-        # ).reshape(self.uv_height, self.uv_width, 2)
         read = numpy.frombuffer(
-            self.pipe.stdout.read(self.y_height * self.y_width * 3 // 2), dtype=self.dtype
+            self.pipe.stdout.read(self.read_amount), dtype=self.dtype
         ).reshape(self.y_height * 3 // 2, self.y_width)
         read_Y = read[:self.y_height]
         read_UV = read[self.y_height:].reshape(2, self.uv_height, self.uv_width).transpose((1, 2, 0))

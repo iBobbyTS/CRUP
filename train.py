@@ -70,6 +70,19 @@ def train(params=None):
                 sdr_lr /= 1023
                 sdr_full /= 1023
                 hdr_ /= 1023
+                _ = (sdr_lr*255).numpy()[0]
+                cv2.imwrite('/Users/ibobby/Dataset/train/sdr_lr_y.png', _[0])
+                cv2.imwrite('/Users/ibobby/Dataset/train/sdr_lr_u.png', _[1])
+                cv2.imwrite('/Users/ibobby/Dataset/train/sdr_lr_v.png', _[2])
+                _ = (sdr_full*255).numpy()[0]
+                cv2.imwrite('/Users/ibobby/Dataset/train/sdr_full_y.png', _[0])
+                cv2.imwrite('/Users/ibobby/Dataset/train/sdr_full_u.png', _[1])
+                cv2.imwrite('/Users/ibobby/Dataset/train/sdr_full_v.png', _[2])
+                _ = (hdr_*255).numpy()[0]
+                cv2.imwrite('/Users/ibobby/Dataset/train/hdr_full_y.png', _[0])
+                cv2.imwrite('/Users/ibobby/Dataset/train/hdr_full_u.png', _[1])
+                cv2.imwrite('/Users/ibobby/Dataset/train/hdr_full_v.png', _[2])
+                exit(1)
                 optimizer.zero_grad()
 
                 res = model(sdr_lr, sdr_full)
