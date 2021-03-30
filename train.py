@@ -8,11 +8,10 @@ from torch.optim import Adam
 from metrics import psnr
 from model import HDRPointwiseNN
 from utils import save_params, get_latest_ckpt, load_params, listdir
-from test import test
 from dataset import FFmpeg2YUV
 
 
-def train(params=None):
+def train(params=None, ffmpeg_path=''):
     os.makedirs(params['ckpt_path'], exist_ok=True)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -41,8 +40,18 @@ def train(params=None):
         current_batch_count = 0
         model.train()
         for file in files:
-            sdr = FFmpeg2YUV(f"{params['dataset']}/{file}", hdr=False, bit_depth=10, ffmpeg_path='/Users/ibobby/root/bin')
-            hdr = FFmpeg2YUV(f"{params['dataset']}/{file}", hdr=True, bit_depth=10, ffmpeg_path='/Users/ibobby/root/bin')
+            sdr = FFmpeg2YUV(
+                f"{params['dataset']}/{file}",
+                bt2020_to_bt709=True, bit_depth=10,
+                l_sl=params['net_input_size'], f_sl=params['net_output_size'],
+                ffmpeg_path=ffmpeg_path
+            )
+            hdr = FFmpeg2YUV(
+                f"{params['dataset']}/{file}",
+                bt2020_to_bt709=False, bit_depth=10,
+                l_sl=params['net_input_size'], f_sl=params['net_output_size'],
+                ffmpeg_path=ffmpeg_path
+            )
             for i in range(sdr.num_frames // params['batch_size']):
                 batch_start_time = time()
                 sdr_lr = torch.empty(
@@ -87,41 +96,14 @@ def train(params=None):
                 epoch_time += time_spent
                 current_batch_count += 1
         model.eval().cpu()
-        ckpt_model_filename = "ckpt_" + str(epoch) + ".pth"
+        ckpt_model_filename = f'ckpt_{epoch}.pth'
         ckpt_model_path = os.path.join(params['ckpt_path'], ckpt_model_filename)
-        state = save_params(model.state_dict(), params)
+        state = save_params(model.state_dict(), {**params, 'Time': epoch_time})
         torch.save(state, ckpt_model_path)
-        test(ckpt_model_path)
         model.to(device).train()
 
 
 if __name__ == '__main__':
-    """
-    import argparse
-
-    parser = argparse.ArgumentParser(description='HDRNet Inference')
-    parser.add_argument('--ckpt-path', type=str, default='./ch', help='Model checkpoint path')
-    parser.add_argument('--test-image', type=str, dest="test_image", help='Test image path')
-    parser.add_argument('--test-out', type=str, default='out.png', dest="test_out", help='Output test image path')
-
-    parser.add_argument('--luma-bins', type=int, default=8)
-    parser.add_argument('--channel-multiplier', default=1, type=int)
-    parser.add_argument('--spatial-bin', type=int, default=16)
-    parser.add_argument('--batch-norm', action='store_true', help='If set use batch norm')
-    parser.add_argument('--net-input-size', type=int, default=256, help='Size of low-res input')
-    parser.add_argument('--net-output-size', type=int, default=512, help='Size of full-res input/output')
-
-    parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate')
-    parser.add_argument('--batch-size', type=int, default=4)
-    parser.add_argument('--epochs', type=int, default=10)
-    parser.add_argument('--log-interval', type=int, default=10)
-    parser.add_argument('--ckpt-interval', type=int, default=100)
-    parser.add_argument('--dataset', type=str, default='', help='Dataset path with input/output dirs', required=True)
-    parser.add_argument('--dataset-suffix', type=str, default='',
-                        help='Add suffix to input/output dirs. Useful when train on different dataset image sizes')
-
-    params = vars(parser.parse_args())
-    """
     params = {
         'ckpt_path': './model_weights',
         'test_image': 'test_image',
@@ -141,4 +123,4 @@ if __name__ == '__main__':
         'dataset_suffix': ''
     }
 
-    train(params=params)
+    train(params=params, ffmpeg_path='')

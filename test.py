@@ -1,40 +1,50 @@
-import cv2
+import subprocess
 import numpy as np
 import skimage.exposure
 import torch
-from torchvision import transforms
 
 from model import HDRPointwiseNN
-from utils import load_image, resize, load_params
+from utils import load_params
+from dataset import FFmpeg2YUV
 
 
-def test(ckpt, args={}):
-    state_dict = torch.load(ckpt)
+def test(ckpt, args: dict):
+    # State_dict
+    state_dict = torch.load(ckpt)['weight']
     state_dict, params = load_params(state_dict)
+    # Params
     params.update(args)
-
-    device = torch.device("cuda")
-    tensor = transforms.Compose([
-        transforms.ToTensor(),
-    ])
-    low = tensor(
-        resize(load_image(params['test_image']), params['net_input_size'], strict=True).astype(np.float32)).repeat(1, 1,
-                                                                                                                   1,
-                                                                                                                   1) / 255
-    full = tensor(load_image(params['test_image']).astype(np.float32)).repeat(1, 1, 1, 1) / 255
-
-    low = low.to(device)
-    full = full.to(device)
-    with torch.no_grad():
-        model = HDRPointwiseNN(params=params)
-        model.load_state_dict(state_dict)
-        model.eval()
-        model.to(device)
+    # Device
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # Video
+    cap = FFmpeg2YUV(
+        params['test_image'],
+        bt2020_to_bt709=False, bit_depth=10,
+        return_ori=True, l_sl=256,
+        ffmpeg_path=''
+    )
+    pipe = subprocess.Popen([
+        'ffmpeg',
+        '-f', 'rawvideo', '-pix_fmt', 'yuv444p16le'
+        '-s', '%dx%d' % (cap.y_height, cap.y_width), '-r', '25',
+        '-i', '-',
+        '-c:v', 'hevc', '-tag:v', 'hvc1', '-pix_fmt', 'yuv420p10le',
+        args['test_out']
+    ], stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    # Model
+    torch.set_grad_enabled(False)
+    model = HDRPointwiseNN(params=params)
+    model.load_state_dict(state_dict)
+    model.eval()
+    model.to(device)
+    for i in range(cap.num_frames):
+        low, full = cap.read()
+        low = torch.from_numpy(low).unsqueeze(0)/1023
         img = model(low, full)
-        print('MIN:', torch.min(img), 'MAX:', torch.max(img))
         img = (img.cpu().detach().numpy()).transpose(0, 2, 3, 1)[0]
-        img = skimage.exposure.rescale_intensity(img, out_range=(0.0, 255.0)).astype(np.uint8)
-        cv2.imwrite(params['test_out'], img[..., ::-1])
+        img = skimage.exposure.rescale_intensity(img, out_range=(0.0, 65535.0)).astype(np.uint16)
+        pipe.stdin.write(img.tobytes())
+    pipe.terminate()
 
 
 if __name__ == '__main__':
@@ -42,8 +52,8 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='HDRNet Inference')
     parser.add_argument('--checkpoint', type=str, help='model state path')
-    parser.add_argument('--input', type=str, dest="test_image", help='image path')
-    parser.add_argument('--output', type=str, dest="test_out", help='output image path')
+    parser.add_argument('--input', type=str, dest='test_image', help='image path')
+    parser.add_argument('--output', type=str, dest='test_out', help='output image path')
 
     args = vars(parser.parse_args())
 
