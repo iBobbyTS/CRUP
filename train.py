@@ -8,7 +8,7 @@ from torch.optim import Adam
 
 from metrics import psnr
 from model import HDRPointwiseNN
-from utils import save_params, get_latest_ckpt, load_params, listdir
+from utils import get_latest_ckpt, load_params, listdir
 from dataset import FFmpeg2YUV
 
 
@@ -36,9 +36,9 @@ def train(params=None):
         total_batch_count += int(cap.get(7) // params['batch_size'])
         cap.release()
 
-    for epoch in range(params['epochs']):
+    for epoch in range(1, params['epochs'] + 1):
         epoch_time = 0
-        current_batch_count = 0
+        current_batch_count = 1
         model.train()
         for file in files:
             sdr = FFmpeg2YUV(
@@ -70,19 +70,6 @@ def train(params=None):
                 sdr_lr /= 1023
                 sdr_full /= 1023
                 hdr_ /= 1023
-                _ = (sdr_lr*255).numpy()[0]
-                cv2.imwrite('/Users/ibobby/Dataset/train/sdr_lr_y.png', _[0])
-                cv2.imwrite('/Users/ibobby/Dataset/train/sdr_lr_u.png', _[1])
-                cv2.imwrite('/Users/ibobby/Dataset/train/sdr_lr_v.png', _[2])
-                _ = (sdr_full*255).numpy()[0]
-                cv2.imwrite('/Users/ibobby/Dataset/train/sdr_full_y.png', _[0])
-                cv2.imwrite('/Users/ibobby/Dataset/train/sdr_full_u.png', _[1])
-                cv2.imwrite('/Users/ibobby/Dataset/train/sdr_full_v.png', _[2])
-                _ = (hdr_*255).numpy()[0]
-                cv2.imwrite('/Users/ibobby/Dataset/train/hdr_full_y.png', _[0])
-                cv2.imwrite('/Users/ibobby/Dataset/train/hdr_full_u.png', _[1])
-                cv2.imwrite('/Users/ibobby/Dataset/train/hdr_full_v.png', _[2])
-                exit(1)
                 optimizer.zero_grad()
 
                 res = model(sdr_lr, sdr_full)
@@ -100,21 +87,24 @@ def train(params=None):
                     f"Batch {current_batch_count}/{total_batch_count} | "
                     "MSE Loss: %.02e | "
                     "PSNR Loss: %.02f | "
+                    "Estimated Time Lest: %.02f | "
                     "Epoch Time: %.02f | "
                     "Batch Time: %.02f"
                     "" % (
-                        loss, _psnr, epoch_time, time_spent
+                        loss, _psnr, epoch_time/current_batch_count*(total_batch_count-current_batch_count), epoch_time, time_spent
                     ),
                     end='', flush=True
                 )
                 epoch_time += time_spent
                 current_batch_count += 1
-        model.eval().cpu()
-        ckpt_model_filename = f'ckpt_{epoch}.pth'
-        ckpt_model_path = os.path.join(params['ckpt_path'], ckpt_model_filename)
-        state = save_params(model.state_dict(), {**params, 'Time': epoch_time})
-        torch.save(state, ckpt_model_path)
-        model.to(device).train()
+        torch.save(
+            {
+                'weight': model.state_dict(),
+                'Time': epoch_time,
+                **params
+            },
+            os.path.join(params['ckpt_path'], f'ckpt_{epoch}.pth')
+        )
 
 
 if __name__ == '__main__':
@@ -123,8 +113,10 @@ if __name__ == '__main__':
     parser.add_argument('-low', type=int, dest='net_input_size')
     parser.add_argument('-full', type=int, dest='net_output_size')
     parser.add_argument('-lr', type=float)
+    parser.add_argument('-ep', type=int, dest='epochs')
     parser.add_argument('-bs', type=int, dest='batch_size')
     parser.add_argument('-ff', type=str, dest='ffmpeg_path')
+    parser.add_argument('-md', type=str, dest='ckpt_model_path')
 
     params = {
         'ckpt_path': './model_weights',
@@ -143,7 +135,8 @@ if __name__ == '__main__':
         'ckpt_interval': 100,
         'dataset': '/Users/ibobby/Dataset/hdr',
         'dataset_suffix': '',
-        'ffmpeg_path': ''
+        'ffmpeg_path': '',
+        'ckpt_model_path': ''
     }
     params.update(parser.parse_args().__dict__)
 

@@ -44,12 +44,12 @@ class Slice(nn.Module):
     @staticmethod
     def forward(bilateral_grid, guidemap):
         # Nx12x8x16x16
-        device = bilateral_grid.get_device()
+        device = bilateral_grid.device
         N, _, H, W = guidemap.shape
         hg, wg = torch.meshgrid([torch.arange(0, H), torch.arange(0, W)])  # [0,511] HxW
-        if device >= 0:
-            hg = hg.to(device)
-            wg = wg.to(device)
+        # if device >= 0:
+        hg = hg.to(device)
+        wg = wg.to(device)
         hg = hg.float().repeat(N, 1, 1).unsqueeze(3) / (H - 1) * 2 - 1  # norm to [-1,1] NxHxWx1
         wg = wg.float().repeat(N, 1, 1).unsqueeze(3) / (W - 1) * 2 - 1  # norm to [-1,1] NxHxWx1
         guidemap = guidemap.permute(0, 2, 3, 1).contiguous()

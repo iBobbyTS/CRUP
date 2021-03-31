@@ -32,7 +32,6 @@ class FFmpeg2YUV:
         cmd = [
             os.path.join(ffmpeg_path, 'ffmpeg'),
             '-loglevel', 'error',
-            '-ss', '15',
             '-i', path,
             *(['-vf',
                'zscale=t=linear:npl=100,format=yuv420p10le,'
