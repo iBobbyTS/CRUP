@@ -7,7 +7,8 @@ import torch
 from torch.optim import Adam
 
 from metrics import psnr
-from model import HDRPointwiseNN
+from model_y_uv import HDRPointwiseNN
+# from mytest import HDRPointwiseNN
 from utils import get_latest_ckpt, load_params, listdir
 from dataset import FFmpeg2YUV
 
@@ -17,17 +18,22 @@ def train(params=None):
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    model = HDRPointwiseNN(params=params)
+    y_model = HDRPointwiseNN(n_channel=1, net_input_size=params['net_input_size'])
+    uv_model = HDRPointwiseNN(n_channel=2, net_input_size=params['net_input_size'])
     ckpt = get_latest_ckpt(params['ckpt_path'])
     if ckpt:
         print('Loading previous state:', ckpt)
         state_dict = torch.load(ckpt)
-        state_dict, _ = load_params(state_dict)
-        model.load_state_dict(state_dict)
-    model.to(device)
+        state_dict, params = map(state_dict.get, ('weight', 'model_params'))
+        y_model.load_state_dict(state_dict['y'])
+        uv_model.load_state_dict(state_dict['uv'])
+    y_model.to(device)
+    uv_model.to(device)
 
-    mseloss = torch.nn.MSELoss()
-    optimizer = Adam(model.parameters(), params['lr'])
+    y_mseloss = torch.nn.MSELoss()
+    uv_mseloss = torch.nn.MSELoss()
+    y_optimizer = Adam(y_model.parameters(), params['lr'])
+    uv_optimizer = Adam(uv_model.parameters(), params['lr'])
 
     files = listdir(params['dataset'])
     total_batch_count = 0
@@ -39,7 +45,8 @@ def train(params=None):
     for epoch in range(1, params['epochs'] + 1):
         epoch_time = 0
         current_batch_count = 1
-        model.train()
+        y_model.train()
+        uv_model.train()
         for file in files:
             sdr = FFmpeg2YUV(
                 os.path.join(params['dataset'], file),
@@ -70,37 +77,52 @@ def train(params=None):
                 sdr_lr /= 1023
                 sdr_full /= 1023
                 hdr_ /= 1023
-                optimizer.zero_grad()
+                y_optimizer.zero_grad()
+                uv_optimizer.zero_grad()
 
-                res = model(sdr_lr, sdr_full)
+                # Train
+                y_res = y_model(sdr_lr[:, [0]], sdr_full)
+                print(sdr_full.shape)
+                uv_res = uv_model(sdr_lr[:, 1:], sdr_full)
 
-                loss = mseloss(res, hdr_)
-                loss.backward()
-                loss = loss.item()
-                _psnr = psnr(res, hdr_).item()
+                # MSE loss
+                y_loss = y_mseloss(y_res, hdr_[:, [0]])
+                y_loss.backward()
+                y_loss = y_loss.item()
+                uv_loss = uv_mseloss(uv_res, hdr_[:, 1:])
+                uv_loss.backward()
+                uv_loss = uv_loss.item()
+                # PSNR Loss
+                y_psnr = psnr(y_res, hdr_[:, [0]]).item()
+                uv_psnr = psnr(uv_res, hdr_[:, 1:]).item()
 
-                optimizer.step()
+                y_optimizer.step()
+                uv_optimizer.step()
                 time_spent = time() - batch_start_time
+                epoch_time += time_spent
                 print(
                     "\r"
                     f"Epoch {epoch}/{params['epochs']} | "
                     f"Batch {current_batch_count}/{total_batch_count} | "
-                    "MSE Loss: %.02e | "
-                    "PSNR Loss: %.02f | "
+                    "MSE Loss(Y/UV): %.02e/%.02e | "
+                    "PSNR Loss(Y/UV): %.02f/%.02f | "
                     "Estimated Time Lest: %.02f | "
                     "Epoch Time: %.02f | "
                     "Batch Time: %.02f"
                     "" % (
-                        loss, _psnr, epoch_time/current_batch_count*(total_batch_count-current_batch_count), epoch_time, time_spent
+                        y_loss, uv_loss, y_psnr, uv_psnr,
+                        epoch_time/current_batch_count*(total_batch_count-current_batch_count),
+                        epoch_time, time_spent
                     ),
                     end='', flush=True
                 )
-                epoch_time += time_spent
                 current_batch_count += 1
-                exit()
         torch.save(
             {
-                'weight': model.state_dict(),
+                'weight': {
+                    'y': y_model.state_dict(),
+                    'uv': uv_model.state_dict()
+                },
                 'model_params': {
                     'Time': epoch_time,
                     **params
@@ -123,8 +145,6 @@ if __name__ == '__main__':
 
     params = {
         'ckpt_path': './model_weights',
-        'test_image': 'test_image',
-        'test_out': 'out.png',
         'luma_bins': 8,
         'channel_multiplier': 1,
         'spatial_bin': 16,
@@ -137,7 +157,6 @@ if __name__ == '__main__':
         'log_interval': 10,
         'ckpt_interval': 100,
         'dataset': '/Users/ibobby/Dataset/hdr',
-        'dataset_suffix': '',
         'ffmpeg_path': '',
         'ckpt_model_path': ''
     }

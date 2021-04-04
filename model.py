@@ -70,7 +70,6 @@ class ApplyCoeffs(nn.Module):
             g = a21*r + a22*g + a23*b + a24
             ...
         """
-
         R = torch.sum(full_res_input * coeff[:, 0:3, :, :], dim=1, keepdim=True) + coeff[:, 3:4, :, :]
         G = torch.sum(full_res_input * coeff[:, 4:7, :, :], dim=1, keepdim=True) + coeff[:, 7:8, :, :]
         B = torch.sum(full_res_input * coeff[:, 8:11, :, :], dim=1, keepdim=True) + coeff[:, 11:12, :, :]
@@ -115,7 +114,6 @@ class Coeffs(nn.Module):
 
         # global features
         n_layers_global = int(np.log2(sb / 4))
-        print(n_layers_global)
         self.global_features_conv = nn.ModuleList()
         self.global_features_fc = nn.ModuleList()
         for i in range(n_layers_global):
@@ -165,10 +163,6 @@ class Coeffs(nn.Module):
 
         x = self.conv_out(fusion)
         y = torch.stack(torch.split(x, self.nin * self.nout, 1), 2)
-        # y = torch.stack(torch.split(y, self.nin, 1),3)
-        # print(y.shape)
-        # x = x.view(bs,self.nin*self.nout,lb,sb,sb) # B x Coefs x Luma x Spatial x Spatial
-        # print(x.shape)
         return y
 
 
@@ -179,14 +173,11 @@ class HDRPointwiseNN(nn.Module):
         self.guide = GuideNN(params=params)
         self.slice = Slice()
         self.apply_coeffs = ApplyCoeffs()
-        # self.bsa = bsa.BilateralSliceApply()
 
     def forward(self, lowres, fullres):
         coeffs = self.coeffs(lowres)
         guide = self.guide(fullres)
         slice_coeffs = self.slice(coeffs, guide)
         out = self.apply_coeffs(slice_coeffs, fullres)
-        # out = bsa.bsa(coeffs,guide,fullres)
         return out
 
-#########################################################################################################

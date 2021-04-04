@@ -1,22 +1,20 @@
 import subprocess
 import torch
 import cv2
-from skimage import exposure
 import numpy
 
 from model import HDRPointwiseNN
-from utils import load_params
 from dataset import FFmpeg2YUV
 
 
 def test(ckpt, args: dict):
-    # State_dict
-    state_dict = torch.load(ckpt)
-    state_dict, params = load_params(state_dict)
-    # Params
-    params.update(args)
     # Device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # State_dict
+    state_dict = torch.load(ckpt, map_location=device)
+    state_dict, params = map(state_dict.get, ('weight', 'model_params'))
+    # Params
+    params.update(args)
     # Video
     cap = FFmpeg2YUV(
         params['test_image'],
@@ -41,18 +39,22 @@ def test(ckpt, args: dict):
     model.to(device)
     for i in range(cap.num_frames):
         low, full = cap.read()
-        low = torch.from_numpy(low).unsqueeze(0)/255
-        full = torch.from_numpy(full).unsqueeze(0)/255
-        # cv2.imwrite('/Users/ibobby/Dataset/resolution_test/1080p_low_y.png', (full.squeeze(0) * 255)[0].numpy())
-        # cv2.imwrite('/Users/ibobby/Dataset/resolution_test/1080p_low_u.png', (full.squeeze(0) * 255)[1].numpy())
-        # cv2.imwrite('/Users/ibobby/Dataset/resolution_test/1080p_low_v.png', (full.squeeze(0) * 255)[2].numpy())
+        low = (torch.from_numpy(low)/255).unsqueeze(0)
+        full = (torch.from_numpy(full)/255).unsqueeze(0)
+        print(full.max(), full.min(), low.max(), low.min())
+        cv2.imwrite('/Users/ibobby/Dataset/resolution_test/1080p_low_y.png', (full.squeeze(0) * 255)[0].numpy())
+        cv2.imwrite('/Users/ibobby/Dataset/resolution_test/1080p_low_u.png', (full.squeeze(0) * 255)[1].numpy())
+        cv2.imwrite('/Users/ibobby/Dataset/resolution_test/1080p_low_v.png', (full.squeeze(0) * 255)[2].numpy())
         img = model(low, full)
+        print(img.max(), img.min())
         img = img[0].cpu().detach().numpy()
-        img = exposure.rescale_intensity(img, out_range=(0.0, 1023.0)).astype(numpy.uint16)
+        img *= 1023
+        img = img.astype(numpy.uint16)
         # print(img.shape, img.dtype)
-        # cv2.imwrite('/Users/ibobby/Dataset/resolution_test/1080p_outY.png', (img / 4)[0])
-        # cv2.imwrite('/Users/ibobby/Dataset/resolution_test/1080p_outU.png', (img / 4)[1])
-        # cv2.imwrite('/Users/ibobby/Dataset/resolution_test/1080p_outV.png', (img / 4)[2])
+        x = 1023/255
+        cv2.imwrite('/Users/ibobby/Dataset/resolution_test/1080p_outY.png', (img /x)[0])
+        cv2.imwrite('/Users/ibobby/Dataset/resolution_test/1080p_outU.png', (img / x)[1])
+        cv2.imwrite('/Users/ibobby/Dataset/resolution_test/1080p_outV.png', (img / x)[2])
         pipe.stdin.write(img.tobytes())
     pipe.terminate()
     cap.close()

@@ -41,6 +41,7 @@ class FFmpeg2YUV:
             '-pix_fmt', f"yuv420p{'' if bit_depth == 8 else f'{bit_depth}le'}",
             '-'
         ]
+        print(' '.join(cmd))
         self.pipe = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, bufsize=self.read_amount
         )
