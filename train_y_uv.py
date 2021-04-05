@@ -82,7 +82,6 @@ def train(params=None):
 
                 # Train
                 y_res = y_model(sdr_lr[:, [0]], sdr_full)
-                print(sdr_full.shape)
                 uv_res = uv_model(sdr_lr[:, 1:], sdr_full)
 
                 # MSE loss

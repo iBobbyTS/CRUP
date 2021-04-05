@@ -72,8 +72,6 @@ class ApplyCoeffs(nn.Module):
             g = a21*r + a22*g + a23*b + a24
             ...
         """
-        print(coeff[:, 4 * 0:4 * 0 + 3, :, :].shape, full_res_input.shape)
-        print(coeff[:, 4 * 1:4 * 1 + 3, :, :].shape, full_res_input.shape)
         [full_res_input * coeff[:, 4 * i:4 * i + 3, :, :] for i in range(self.n_channel)]
         return torch.cat([torch.sum(
             full_res_input * coeff[:, 4*i:4*i+3, :, :], dim=1, keepdim=True
